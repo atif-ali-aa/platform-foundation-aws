@@ -1,0 +1,57 @@
+name: Feature Request
+description: Propose a new capability, module, or change to an existing module
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For proposals that change an existing architectural decision (e.g.
+        NAT strategy, IRSA pattern, subnet layout), consider whether this
+        should be an ADR proposal instead. See `docs/adr/`.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - New module (currently Planned)
+        - Change to vpc
+        - Change to iam
+        - Change to eks
+        - CI/CD
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What production scenario does the current repository not support?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would the module/interface/workflow look like? Reference existing module patterns where possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Trade-offs
+      description: Cost, complexity, security, or operational trade-offs this introduces.
+    validations:
+      required: false

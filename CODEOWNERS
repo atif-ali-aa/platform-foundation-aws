@@ -1,0 +1,26 @@
+# CODEOWNERS
+#
+# Every change to production Terraform modules must be reviewed by the
+# platform team before merge. Paths not listed here fall back to the
+# default owner at the bottom of the file.
+#
+# Replace @REPLACE_WITH_GITHUB_USERNAME below with your actual GitHub
+# username (or a team handle, e.g. @org/platform-team) before publishing.
+#
+# Syntax reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Production modules require platform team review
+/modules/vpc/                 @REPLACE_WITH_GITHUB_USERNAME
+/modules/iam/                 @REPLACE_WITH_GITHUB_USERNAME
+/modules/eks/                 @REPLACE_WITH_GITHUB_USERNAME
+
+# CI/CD and repository automation
+/.github/                     @REPLACE_WITH_GITHUB_USERNAME
+
+# Architecture decisions and standards require explicit sign-off
+/docs/adr/                     @REPLACE_WITH_GITHUB_USERNAME
+/docs/terraform-standards.md   @REPLACE_WITH_GITHUB_USERNAME
+/docs/security.md              @REPLACE_WITH_GITHUB_USERNAME
+
+# Default owner
+*                               @REPLACE_WITH_GITHUB_USERNAME

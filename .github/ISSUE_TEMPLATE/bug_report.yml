@@ -1,0 +1,70 @@
+name: Bug Report
+description: Report a defect in a production-ready module (vpc, iam, eks)
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, confirm the module you're reporting against is
+        marked **Production-Ready** in the README. Planned modules have no
+        implementation to have bugs in. Use a Feature Request instead.
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Affected module
+      options:
+        - vpc
+        - iam
+        - eks
+        - CI/CD workflows
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Module version / commit SHA
+      description: Which commit or tag were you on?
+      placeholder: e.g. v0.3.0 or ca04768
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the defect and how it deviates from the module's documented behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal Terraform configuration or `terraform plan`/`apply` output that reproduces the issue.
+      render: hcl
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Terraform version, AWS provider version, region.
+      placeholder: |
+        Terraform: 1.9.0
+        AWS provider: 5.60.0
+        Region: us-east-1
+    validations:
+      required: true

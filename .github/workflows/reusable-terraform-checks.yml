@@ -1,0 +1,105 @@
+name: Reusable - Terraform Checks
+
+# Runs the static-analysis suite (fmt, validate, tflint, tfsec, checkov)
+# against a single Terraform directory. Called once per module/environment
+# by terraform-ci.yml's matrix so every directory gets an identical set of
+# checks instead of hand-maintained per-module jobs.
+#
+# Inputs come only from the calling workflow's own matrix (repository file
+# paths), never from event payloads (issue/PR titles, commit messages,
+# branch names, etc.), so no additional input sanitization is needed here.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Directory containing the Terraform root/module to check"
+        required: true
+        type: string
+      terraform-version:
+        description: "Terraform version to use"
+        required: false
+        type: string
+        default: "1.9.8"
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: terraform fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: terraform fmt -check
+        working-directory: ${{ inputs.working-directory }}
+        run: terraform fmt -check -recursive -diff
+
+  validate:
+    name: terraform validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: terraform init (no backend)
+        working-directory: ${{ inputs.working-directory }}
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate
+        working-directory: ${{ inputs.working-directory }}
+        run: terraform validate -no-color
+
+  tflint:
+    name: tflint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.53.0
+
+      - name: Init tflint plugins
+        working-directory: ${{ inputs.working-directory }}
+        run: tflint --init
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: tflint
+        working-directory: ${{ inputs.working-directory }}
+        run: tflint --config="${{ github.workspace }}/.tflint.hcl" --recursive
+
+  tfsec:
+    name: tfsec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: ${{ inputs.working-directory }}
+          soft_fail: false
+
+  checkov:
+    name: checkov
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: ${{ inputs.working-directory }}
+          framework: terraform
+          quiet: true
+          soft_fail: false

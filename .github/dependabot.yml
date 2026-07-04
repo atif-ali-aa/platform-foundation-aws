@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - "dependencies"
+      - "ci"
+
+  - package-ecosystem: "terraform"
+    directory: "/modules/vpc"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(vpc)"
+    labels:
+      - "dependencies"
+      - "terraform"
+
+  - package-ecosystem: "terraform"
+    directory: "/modules/iam"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(iam)"
+    labels:
+      - "dependencies"
+      - "terraform"
+
+  - package-ecosystem: "terraform"
+    directory: "/modules/eks"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(eks)"
+    labels:
+      - "dependencies"
+      - "terraform"

@@ -1,0 +1,80 @@
+name: Terraform Plan
+
+# Runs `terraform plan` for each deployable stack under environments/.
+# Unlike terraform-ci.yml (which validates modules in isolation with no
+# backend), this needs real AWS credentials via OIDC and a configured
+# remote state backend, both of which are environment-specific and don't
+# exist until the environments/ milestone ships. Until then this workflow
+# has nothing to match and no-ops cleanly.
+#
+# Once environments/<name> exists, set the following repository/environment
+# secrets for that environment: AWS_ROLE_ARN (OIDC role to assume) and
+# AWS_REGION. No long-lived AWS access keys should ever be stored here.
+# See docs/security.md for the OIDC federation pattern this repo uses.
+#
+# No step reads event payload text (PR title/body, commit messages, branch
+# names) into a run: command. The only dynamic input is repository file
+# paths discovered by `find`.
+
+on:
+  pull_request:
+    paths:
+      - "environments/**"
+
+permissions:
+  contents: read
+  id-token: write # required for AWS OIDC federation
+  pull-requests: write # required to comment the plan on the PR
+
+jobs:
+  discover:
+    name: Discover environments
+    runs-on: ubuntu-latest
+    outputs:
+      dirs: ${{ steps.find.outputs.dirs }}
+      has-dirs: ${{ steps.find.outputs.has-dirs }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find environment directories
+        id: find
+        run: |
+          mapfile -t dirs < <(find environments -mindepth 1 -maxdepth 2 -type f -name '*.tf' -exec dirname {} \; 2>/dev/null | sort -u)
+          if [ "${#dirs[@]}" -eq 0 ]; then
+            echo "has-dirs=false" >> "$GITHUB_OUTPUT"
+            echo "dirs=[]" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-dirs=true" >> "$GITHUB_OUTPUT"
+            json=$(printf '%s\n' "${dirs[@]}" | jq -R . | jq -sc .)
+            echo "dirs=${json}" >> "$GITHUB_OUTPUT"
+          fi
+
+  plan:
+    name: plan
+    needs: discover
+    if: needs.discover.outputs.has-dirs == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        directory: ${{ fromJson(needs.discover.outputs.dirs) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: terraform init
+        working-directory: ${{ matrix.directory }}
+        run: terraform init -input=false
+
+      - name: terraform plan
+        working-directory: ${{ matrix.directory }}
+        run: terraform plan -input=false -no-color -out=tfplan

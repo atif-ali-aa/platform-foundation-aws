@@ -1,0 +1,65 @@
+name: Terraform CI
+
+# Discovers every directory containing Terraform files and runs the full
+# check suite (fmt, validate, tflint, tfsec, checkov) against each one via
+# the reusable workflow. New modules/environments are picked up
+# automatically, so nothing needs to be hardcoded when modules/vpc,
+# modules/iam, modules/eks, or later environments/* are added.
+#
+# No step here reads event payload text (PR title/body, commit messages,
+# branch names) into a run: command, so there is no injection surface.
+# The only "input" is repository file paths discovered by `find`.
+
+on:
+  pull_request:
+    paths:
+      - "modules/**"
+      - "environments/**"
+      - "examples/**"
+      - ".github/workflows/terraform-ci.yml"
+      - ".github/workflows/reusable-terraform-checks.yml"
+      - ".tflint.hcl"
+  push:
+    branches: [main]
+    paths:
+      - "modules/**"
+      - "environments/**"
+      - "examples/**"
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    name: Discover Terraform directories
+    runs-on: ubuntu-latest
+    outputs:
+      dirs: ${{ steps.find.outputs.dirs }}
+      has-dirs: ${{ steps.find.outputs.has-dirs }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find directories containing .tf files
+        id: find
+        run: |
+          mapfile -t dirs < <(find modules environments examples -type f -name '*.tf' -exec dirname {} \; 2>/dev/null | sort -u)
+          if [ "${#dirs[@]}" -eq 0 ]; then
+            echo "has-dirs=false" >> "$GITHUB_OUTPUT"
+            echo "dirs=[]" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-dirs=true" >> "$GITHUB_OUTPUT"
+            json=$(printf '%s\n' "${dirs[@]}" | jq -R . | jq -sc .)
+            echo "dirs=${json}" >> "$GITHUB_OUTPUT"
+          fi
+
+  checks:
+    name: Checks
+    needs: discover
+    if: needs.discover.outputs.has-dirs == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        directory: ${{ fromJson(needs.discover.outputs.dirs) }}
+    uses: ./.github/workflows/reusable-terraform-checks.yml
+    with:
+      working-directory: ${{ matrix.directory }}

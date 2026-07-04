@@ -1,0 +1,20 @@
+# markdownlint configuration
+# https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+default: true
+
+# Long lines are common in tables and reference-style docs; wrapping them
+# hurts readability more than it helps.
+MD013: false
+
+# Allow inline HTML for things like <br> in tables and collapsible sections.
+MD033: false
+
+# Allow duplicate headings across different files (e.g. every module README
+# has a "## Inputs" section). Only flag duplicates within the same file.
+MD024:
+  siblings_only: true
+
+# First line doesn't have to be a top-level heading (e.g. ADR files start
+# with front-matter-style metadata).
+MD041: false
