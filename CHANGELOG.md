@@ -25,10 +25,10 @@ intent is described in [docs/repository-standards.md](docs/repository-standards.
   subnets, configurable NAT strategy (per-AZ default, single shared for
   non-prod), per-AZ private route tables, isolated database route table,
   Network ACLs per tier, a locked-down default security group, EKS/ALB
-  subnet tagging, and a database subnet group. `terraform fmt` and
-  `terraform validate` pass locally; `tflint`/`tfsec`/`checkov` were not
-  runnable locally (not installed) but will run in CI. Two `checkov`
-  findings are deliberately suppressed inline with justification. See
+  subnet tagging, and a database subnet group. Verified locally with
+  `terraform fmt`/`validate`, `tflint`, `checkov`, and `tfsec` (the last
+  two via Docker). Five `checkov` findings and ten `tfsec` findings are
+  deliberately suppressed inline with justification. See
   `modules/vpc/README.md#reviewed-ci-exceptions`.
 - `iam` module (Production-Ready): IAM OIDC provider, a generic IRSA role
   pattern (`irsa_roles`) with trust policies conditioned on both `sub`
@@ -37,20 +37,42 @@ intent is described in [docs/repository-standards.md](docs/repository-standards.
   (modeled on the upstream policy structure, documented as needing
   version-specific verification), and Cluster Autoscaler (Auto Scaling
   actions scoped by the `k8s.io/cluster-autoscaler/<cluster>` resource
-  tag). `terraform fmt` and `terraform validate` pass locally.
+  tag). Verified locally with `terraform fmt`/`validate`, `tflint`,
+  `checkov`, and `tfsec`; no findings.
 - `eks` module (Production-Ready): managed node groups (required, no
-  hidden default), cluster/node IAM roles, production security groups
-  (control plane to node rules per AWS's documented minimum), control
-  plane logging to a Terraform-managed CloudWatch Logs group, EKS addons
-  (`vpc-cni`, `coredns`, `kube-proxy`), modern Access Entry-based cluster
-  access (no `aws-auth` ConfigMap), and a `cluster_oidc_issuer_url` output
-  that feeds directly into the `iam` module for IRSA. Deliberately ships
-  no Karpenter and no Helm/`kubernetes`-provider-based controller
-  installs. See `modules/eks/README.md` for the reasoning and the exact
-  Helm commands to run separately. `terraform fmt` and `terraform
-  validate` pass locally. Two `checkov` findings are deliberately
-  suppressed inline with justification. See
-  `modules/eks/README.md#reviewed-ci-exceptions`.
+  hidden default) attached to a launch template that enforces IMDSv2 and
+  actually applies the node security group (EKS only auto-attaches the
+  cluster's security groups to node ENIs otherwise), cluster/node IAM
+  roles, production security groups (control plane to node rules per
+  AWS's documented minimum), control plane logging to a Terraform-managed
+  CloudWatch Logs group (365-day default retention, optional KMS key),
+  EKS addons (`vpc-cni`, `coredns`, `kube-proxy`), modern Access
+  Entry-based cluster access (no `aws-auth` ConfigMap), and a
+  `cluster_oidc_issuer_url` output that feeds directly into the `iam`
+  module for IRSA. Deliberately ships no Karpenter and no
+  Helm/`kubernetes`-provider-based controller installs. See
+  `modules/eks/README.md` for the reasoning and the exact Helm commands
+  to run separately. Verified locally with `terraform fmt`/`validate`,
+  `tflint`, `checkov`, and `tfsec`. Seven `checkov` findings and eleven
+  `tfsec` findings are deliberately suppressed inline with justification.
+  See `modules/eks/README.md#reviewed-ci-exceptions`.
+
+### Fixed
+
+- CI: the `tflint --init` step in `.github/workflows/reusable-terraform-checks.yml`
+  was running without `--config`, so it silently initialized no plugins
+  while the actual lint step (which does pass `--config`) then failed
+  with `Plugin "aws" not found` on every module. Both steps now use the
+  same config.
+- `modules/eks`: `aws_security_group.node` was created but never actually
+  attached to any node instance (EKS managed node groups only auto-attach
+  the security groups passed into the cluster's `vpc_config`, not a
+  standalone security group). Fixed by adding `aws_launch_template.node`
+  with the node security group wired into `network_interfaces`; caught by
+  `checkov`'s `CKV2_AWS_5` in CI, not by local review.
+- `.github/PULL_REQUEST_TEMPLATE.md` and `CONTRIBUTING.md`: fixed a
+  trailing-whitespace and a missing-code-fence-language markdownlint
+  finding surfaced by the `Markdown Lint` workflow.
 
 <!--
 Entries below this line are added as milestones complete. Each entry

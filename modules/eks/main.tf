@@ -132,7 +132,14 @@ resource "aws_security_group" "cluster" {
   })
 }
 
+#tfsec:ignore:aws-ec2-no-public-egress-sgr
 resource "aws_security_group_rule" "cluster_egress_all" {
+  # checkov:skip=CKV_AWS_382:The control plane's cross-account ENIs need
+  # to reach nodes across the private subnets and AWS service APIs; a
+  # generic module can't enumerate every destination in advance without
+  # AWS-managed prefix lists per region/service, which is a heavier
+  # design change than this module's scope. Inbound rules remain tightly
+  # scoped (see the security group table in this module's README).
   security_group_id = aws_security_group.cluster.id
   type              = "egress"
   protocol          = "-1"
@@ -173,7 +180,13 @@ resource "aws_security_group_rule" "node_self_ingress" {
   description              = "Node-to-node communication (pod networking)."
 }
 
+#tfsec:ignore:aws-ec2-no-public-egress-sgr
 resource "aws_security_group_rule" "node_egress_all" {
+  # checkov:skip=CKV_AWS_382:Nodes need broad egress for image pulls,
+  # AWS API calls routed through NAT, and arbitrary pod-initiated
+  # traffic; a generic module can't enumerate every destination in
+  # advance. Inbound rules remain tightly scoped (see the security group
+  # table in this module's README).
   security_group_id = aws_security_group.node.id
   type              = "egress"
   protocol          = "-1"
@@ -204,14 +217,77 @@ resource "aws_security_group_rule" "node_ingress_cluster_extension_apis" {
 }
 
 # ---------------------------------------------------------------------------
+# Launch template: the only way to actually attach aws_security_group.node
+# to node instances. EKS managed node groups only auto-attach the security
+# groups passed into the cluster's vpc_config (aws_security_group.cluster);
+# without a launch template, aws_security_group.node would be created but
+# never applied to any ENI. block_device_mappings assumes /dev/xvda as the
+# root device, which matches AL2/AL2023 EKS-optimized AMIs (the default
+# ami_type for this module); a custom ami_type with a different root
+# device would need this adjusted.
+# ---------------------------------------------------------------------------
+
+resource "aws_launch_template" "node" {
+  for_each = var.node_groups
+
+  name_prefix = "${var.environment}-eks-${each.key}-"
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+
+    ebs {
+      volume_size           = each.value.disk_size
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
+    }
+  }
+
+  network_interfaces {
+    security_groups       = [aws_security_group.node.id]
+    delete_on_termination = true
+  }
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required" # enforce IMDSv2, disable IMDSv1
+    # hop_limit = 1 means pods (one network hop further than the host)
+    # cannot reach instance metadata at all. That's intentional here: this
+    # module's workload credential story is IRSA-only (see
+    # docs/adr/ADR-004-why-irsa.md), so no pod should ever need instance
+    # metadata for AWS access in the first place.
+    http_put_response_hop_limit = 1
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+
+    tags = merge(local.default_tags, local.cluster_autoscaler_tags, {
+      Name = "${var.environment}-eks-${each.key}"
+    })
+  }
+
+  tags = local.default_tags
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# ---------------------------------------------------------------------------
 # Control plane logging. The log group is created here (not left for EKS
 # to auto-create) so retention_in_days is actually enforced from the first
 # log event, not applied after the fact. See docs/cost-optimization.md.
 # ---------------------------------------------------------------------------
 
 resource "aws_cloudwatch_log_group" "cluster" {
+  # checkov:skip=CKV_AWS_158:KMS encryption needs a key ARN, and the kms
+  # module is currently Planned (see modules/kms and docs/security.md).
+  # Callers can supply their own key now via cluster_log_kms_key_arn; logs
+  # are still encrypted at rest with the CloudWatch Logs default key.
   name              = "/aws/eks/${local.cluster_name}/cluster"
   retention_in_days = var.cluster_log_retention_in_days
+  kms_key_id        = var.cluster_log_kms_key_arn
 
   tags = merge(local.default_tags, {
     Name = "${local.cluster_name}-control-plane-logs"
@@ -222,15 +298,30 @@ resource "aws_cloudwatch_log_group" "cluster" {
 # EKS Cluster
 # ---------------------------------------------------------------------------
 
+#tfsec:ignore:aws-eks-no-public-cluster-access-to-cidr
+#tfsec:ignore:aws-eks-no-public-cluster-access
+#tfsec:ignore:aws-eks-encrypt-secrets
+#tfsec:ignore:aws-eks-enable-control-plane-logging
 resource "aws_eks_cluster" "this" {
-  # checkov:skip=CKV_AWS_39:Public endpoint CIDR defaults to AWS's own
+  # checkov:skip=CKV_AWS_38:Public endpoint CIDR defaults to AWS's own
   # default (0.0.0.0/0) because there is no generic "safer" default
   # without caller-specific CIDRs (office/VPN ranges). Restrict via
   # endpoint_public_access_cidrs; see this module's README.
+  # checkov:skip=CKV_AWS_39:Public endpoint access is a deliberate,
+  # configurable choice (endpoint_public_access), not disabled outright,
+  # since some consumers need kubectl/CI access without a VPN or bastion
+  # into the VPC. Combine with endpoint_public_access_cidrs to restrict
+  # who can reach it, or set endpoint_public_access = false for a
+  # private-only cluster.
   # checkov:skip=CKV_AWS_58:Secrets envelope encryption requires a KMS key
   # ARN; the kms module is Planned (see modules/kms and docs/security.md).
   # Callers can supply their own key now via
   # cluster_encryption_config_kms_key_arn.
+  # checkov:skip=CKV_AWS_37:Only api/audit/authenticator log types are
+  # enabled by default (see docs/security.md and ADR-002); controllerManager
+  # and scheduler are high-volume, low-signal for this platform's audit
+  # needs and can be added via cluster_enabled_log_types if a caller wants
+  # them.
   name     = local.cluster_name
   role_arn = aws_iam_role.cluster.arn
   version  = var.kubernetes_version
@@ -334,7 +425,11 @@ resource "aws_eks_node_group" "this" {
   ami_type       = each.value.ami_type
   capacity_type  = each.value.capacity_type
   instance_types = each.value.instance_types
-  disk_size      = each.value.disk_size
+
+  launch_template {
+    id      = aws_launch_template.node[each.key].id
+    version = aws_launch_template.node[each.key].latest_version
+  }
 
   scaling_config {
     desired_size = each.value.desired_size

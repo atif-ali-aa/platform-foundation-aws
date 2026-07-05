@@ -7,7 +7,7 @@
 - [ ] vpc
 - [ ] iam
 - [ ] eks
-- [ ] Planned module (specify): 
+- [ ] Planned module (specify):
 - [ ] CI/CD
 - [ ] Documentation only
 

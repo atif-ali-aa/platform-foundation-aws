@@ -38,6 +38,7 @@ locals {
 # VPC
 # ---------------------------------------------------------------------------
 
+#tfsec:ignore:aws-ec2-require-vpc-flow-logs-for-all-vpcs
 resource "aws_vpc" "this" {
   # checkov:skip=CKV2_AWS_11:VPC Flow Logs are deferred to the planned
   # cloudwatch module (see docs/cost-optimization.md and this module's
@@ -63,6 +64,7 @@ resource "aws_internet_gateway" "this" {
 # Subnets
 # ---------------------------------------------------------------------------
 
+#tfsec:ignore:aws-ec2-no-public-ip-subnet
 resource "aws_subnet" "public" {
   # checkov:skip=CKV_AWS_130:Auto-assigning public IPs is the defining
   # characteristic of this module's public tier (NAT gateways, load
@@ -228,7 +230,10 @@ resource "aws_network_acl" "public" {
   })
 }
 
+#tfsec:ignore:aws-ec2-no-public-ingress-acl
 resource "aws_network_acl_rule" "public_inbound_http" {
+  # Public HTTP ingress is the defining purpose of this tier (internet-
+  # facing load balancers); see docs/networking.md.
   network_acl_id = aws_network_acl.public.id
   rule_number    = 100
   egress         = false
@@ -239,7 +244,10 @@ resource "aws_network_acl_rule" "public_inbound_http" {
   to_port        = 80
 }
 
+#tfsec:ignore:aws-ec2-no-public-ingress-acl
 resource "aws_network_acl_rule" "public_inbound_https" {
+  # Public HTTPS ingress is the defining purpose of this tier (internet-
+  # facing load balancers); see docs/networking.md.
   network_acl_id = aws_network_acl.public.id
   rule_number    = 110
   egress         = false
@@ -250,7 +258,15 @@ resource "aws_network_acl_rule" "public_inbound_https" {
   to_port        = 443
 }
 
+#tfsec:ignore:aws-ec2-no-public-ingress-acl
 resource "aws_network_acl_rule" "public_inbound_ephemeral" {
+  # checkov:skip=CKV_AWS_231:Ephemeral return-traffic ports (1024-65535)
+  # are inherently a wide range covering ports like 3389 that this rule
+  # is not actually opening for unsolicited access. NACLs are stateless,
+  # so return traffic for connections nodes/NAT initiated has to be
+  # allowed inbound on the full ephemeral range; the workload-facing
+  # security groups (not this NACL) are the primary control that decides
+  # what's actually reachable. See docs/networking.md.
   network_acl_id = aws_network_acl.public.id
   rule_number    = 120
   egress         = false
@@ -261,7 +277,11 @@ resource "aws_network_acl_rule" "public_inbound_ephemeral" {
   to_port        = 65535
 }
 
+#tfsec:ignore:aws-ec2-no-excessive-port-access
 resource "aws_network_acl_rule" "public_outbound_all" {
+  # Outbound-all matches the public tier's role (NAT gateways/ALBs
+  # reaching arbitrary destinations); security groups on the actual
+  # workloads remain the primary, per-port control. See docs/networking.md.
   network_acl_id = aws_network_acl.public.id
   rule_number    = 100
   egress         = true
@@ -281,7 +301,14 @@ resource "aws_network_acl" "private" {
   })
 }
 
+#tfsec:ignore:aws-ec2-no-excessive-port-access
 resource "aws_network_acl_rule" "private_inbound_vpc" {
+  # checkov:skip=CKV_AWS_352:All-ports is scoped to the VPC CIDR only
+  # (not 0.0.0.0/0), covering intra-VPC pod/node traffic and NAT Gateway
+  # return traffic whose ports aren't known in advance by a generic
+  # module. This NACL is a subnet-level backstop; security groups on the
+  # actual workloads are the primary, per-port control. See
+  # docs/networking.md.
   network_acl_id = aws_network_acl.private.id
   rule_number    = 100
   egress         = false
@@ -292,7 +319,11 @@ resource "aws_network_acl_rule" "private_inbound_vpc" {
   to_port        = 0
 }
 
+#tfsec:ignore:aws-ec2-no-excessive-port-access
 resource "aws_network_acl_rule" "private_outbound_all" {
+  # Outbound-all matches node/NAT egress needs (arbitrary AWS API and
+  # internet destinations); security groups on the actual workloads
+  # remain the primary, per-port control. See docs/networking.md.
   network_acl_id = aws_network_acl.private.id
   rule_number    = 100
   egress         = true
@@ -312,7 +343,14 @@ resource "aws_network_acl" "database" {
   })
 }
 
+#tfsec:ignore:aws-ec2-no-excessive-port-access
 resource "aws_network_acl_rule" "database_inbound_vpc_only" {
+  # checkov:skip=CKV_AWS_352:All-ports is scoped to the VPC CIDR only
+  # (not 0.0.0.0/0). This module is engine-agnostic (RDS, ElastiCache,
+  # DocumentDB all listen on different default ports), so the NACL can't
+  # assume a specific port without being wrong for some engines. Per-port
+  # scoping happens at the security group attached to the actual data
+  # store, which is the primary control; see docs/networking.md.
   network_acl_id = aws_network_acl.database.id
   rule_number    = 100
   egress         = false
@@ -323,7 +361,10 @@ resource "aws_network_acl_rule" "database_inbound_vpc_only" {
   to_port        = 0
 }
 
+#tfsec:ignore:aws-ec2-no-excessive-port-access
 resource "aws_network_acl_rule" "database_outbound_vpc_only" {
+  # Same engine-agnostic reasoning as database_inbound_vpc_only above:
+  # scoped to the VPC CIDR, not 0.0.0.0/0.
   network_acl_id = aws_network_acl.database.id
   rule_number    = 100
   egress         = true

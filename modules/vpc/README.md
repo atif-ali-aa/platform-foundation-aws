@@ -78,17 +78,37 @@ and use only 2 AZs to reduce cost. See
 
 ## Reviewed CI exceptions
 
-Two `checkov` findings are suppressed inline (`# checkov:skip=...` in
-`main.tf`) rather than left to silently fail CI or globally disabled.
-See [docs/security.md](../../docs/security.md#ci-enforced-scanning) for
-the exception policy:
+Five `checkov` findings and ten `tfsec` findings are suppressed inline
+(`# checkov:skip=...` and `#tfsec:ignore:...` in `main.tf`) rather than
+left to silently fail CI or globally disabled. Both tools flag some of
+the same underlying design choices under different rule IDs. See
+[docs/security.md](../../docs/security.md#ci-enforced-scanning) for the
+exception policy:
 
-- **`CKV_AWS_130`** on `aws_subnet.public`: auto-assigning public IPs is
-  the defining characteristic of the public tier (NAT gateways, load
-  balancers). The private and database subnets do not set this.
-- **`CKV2_AWS_11`** on `aws_vpc.this`: VPC Flow Logs are deferred to the
-  planned `cloudwatch` module rather than duplicating log-destination
-  wiring here (see "What this module deliberately does not do" below).
+- **`CKV_AWS_130`** / **`aws-ec2-no-public-ip-subnet`** on
+  `aws_subnet.public`: auto-assigning public IPs is the defining
+  characteristic of the public tier (NAT gateways, load balancers). The
+  private and database subnets do not set this.
+- **`CKV2_AWS_11`** / **`aws-ec2-require-vpc-flow-logs-for-all-vpcs`** on
+  `aws_vpc.this`: VPC Flow Logs are deferred to the planned `cloudwatch`
+  module rather than duplicating log-destination wiring here (see "What
+  this module deliberately does not do" below).
+- **`CKV_AWS_231`** / **`aws-ec2-no-public-ingress-acl`** on
+  `aws_network_acl_rule.public_inbound_http`, `public_inbound_https`, and
+  `public_inbound_ephemeral`: public HTTP/HTTPS ingress (and the
+  ephemeral return-traffic range covering ports like 3389) is the defining
+  purpose of the public tier. NACLs are stateless, so return traffic
+  needs the full ephemeral range allowed; security groups are the
+  primary control on what's actually reachable.
+- **`CKV_AWS_352`** / **`aws-ec2-no-excessive-port-access`** on the five
+  `aws_network_acl_rule` resources using `protocol = "-1"`
+  (`public_outbound_all`, `private_inbound_vpc`, `private_outbound_all`,
+  `database_inbound_vpc_only`, `database_outbound_vpc_only`): all-ports
+  is scoped to the VPC CIDR (or, for the public tier's outbound rule, is
+  the public tier's own egress). A generic module can't assume specific
+  ports in advance (NAT return traffic, arbitrary pod ports, or whichever
+  database engine a caller puts in the database tier); per-port scoping
+  happens at the security group layer instead.
 
 ## What this module deliberately does not do
 

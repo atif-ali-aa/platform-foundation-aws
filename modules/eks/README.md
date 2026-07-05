@@ -101,23 +101,58 @@ module "iam" {
   Terraform**, not left at whatever version the cluster happened to
   launch with. Version drift on these is a real, easy-to-miss production
   issue.
+- **Node groups use a launch template scoped to security groups and disk
+  size only** (`aws_launch_template.node`). EKS managed node groups only
+  auto-attach the security groups passed into the cluster's `vpc_config`;
+  without a launch template, `aws_security_group.node` would be created
+  but never actually applied to any node ENI. The launch template also
+  enforces IMDSv2 (`http_tokens = "required"`) with
+  `http_put_response_hop_limit = 1`, deliberately blocking pod-level
+  access to instance metadata entirely, consistent with this module's
+  IRSA-only workload credential story (see
+  [ADR-004](../../docs/adr/ADR-004-why-irsa.md)).
 
 ## Reviewed CI exceptions
 
-Two `checkov` findings are suppressed inline (`# checkov:skip=...` in
-`main.tf`) rather than left to silently fail CI. See
+Seven `checkov` findings and eleven `tfsec` findings are suppressed
+inline (`# checkov:skip=...` and `#tfsec:ignore:...` in `main.tf`)
+rather than left to silently fail CI. Both tools flag some of the same
+underlying design choices under different rule IDs. See
 [docs/security.md](../../docs/security.md#ci-enforced-scanning) for the
 exception policy:
 
-- **`CKV_AWS_39`** on `aws_eks_cluster.this`: the public endpoint CIDR
-  defaults to AWS's own default (`0.0.0.0/0`) because there's no generic
-  "safer" default without caller-specific CIDRs (office/VPN ranges).
-  Restrict via `endpoint_public_access_cidrs` per environment.
-- **`CKV_AWS_58`** on `aws_eks_cluster.this`: Secrets envelope encryption
-  needs a KMS key ARN, and the `kms` module is Planned (not yet
-  implemented). Callers can supply their own key now via
-  `cluster_encryption_config_kms_key_arn`. This becomes the default once
-  `kms` ships.
+- **`CKV_AWS_38`** / **`aws-eks-no-public-cluster-access-to-cidr`** on
+  `aws_eks_cluster.this`: the public endpoint CIDR defaults to AWS's own
+  default (`0.0.0.0/0`) because there's no generic "safer" default
+  without caller-specific CIDRs (office/VPN ranges). Restrict via
+  `endpoint_public_access_cidrs` per environment.
+- **`CKV_AWS_39`** / **`aws-eks-no-public-cluster-access`** on
+  `aws_eks_cluster.this`: public endpoint access is a deliberate,
+  configurable choice (`endpoint_public_access`), not disabled outright,
+  since some consumers need kubectl/CI access without a VPN or bastion
+  into the VPC.
+- **`CKV_AWS_58`** / **`aws-eks-encrypt-secrets`** on
+  `aws_eks_cluster.this`: Secrets envelope encryption needs a KMS key
+  ARN, and the `kms` module is Planned (not yet implemented). Callers can
+  supply their own key now via `cluster_encryption_config_kms_key_arn`.
+  This becomes the default once `kms` ships.
+- **`CKV_AWS_37`** / **`aws-eks-enable-control-plane-logging`** on
+  `aws_eks_cluster.this`: only `api`/`audit`/`authenticator` log types are
+  enabled by default (see [docs/security.md](../../docs/security.md) and
+  [ADR-002](../../docs/adr/ADR-002-why-amazon-eks.md)). `controllerManager`
+  and `scheduler` are high-volume, low-signal for this platform's audit
+  needs and can be added via `cluster_enabled_log_types` if a caller
+  wants them.
+- **`CKV_AWS_382`** / **`aws-ec2-no-public-egress-sgr`** on
+  `aws_security_group_rule.cluster_egress_all` and `node_egress_all`:
+  the control plane and nodes both need broad egress (AWS API calls,
+  image pulls, NAT-routed internet traffic) that a generic module can't
+  enumerate in advance. Inbound rules remain tightly scoped (see the
+  security group table above).
+- **`CKV_AWS_158`** on `aws_cloudwatch_log_group.cluster`: KMS encryption
+  needs a key ARN, and the `kms` module is Planned. Callers can supply
+  their own key now via `cluster_log_kms_key_arn`; logs are still
+  encrypted at rest with the CloudWatch Logs default key.
 
 ## Installing the controllers
 
@@ -172,8 +207,9 @@ security groups with the minimum rules AWS documents as required:
 | `endpoint_public_access` | Enable public API endpoint access. | `bool` | `true` | no |
 | `endpoint_public_access_cidrs` | CIDRs allowed to reach the public endpoint. | `list(string)` | `["0.0.0.0/0"]` | no |
 | `cluster_enabled_log_types` | Control plane log types shipped to CloudWatch. | `list(string)` | `["api", "audit", "authenticator"]` | no |
-| `cluster_log_retention_in_days` | CloudWatch Logs retention for control plane logs. | `number` | `90` | no |
+| `cluster_log_retention_in_days` | CloudWatch Logs retention for control plane logs. | `number` | `365` | no |
 | `cluster_encryption_config_kms_key_arn` | KMS key for Secrets envelope encryption. | `string` | `null` | no |
+| `cluster_log_kms_key_arn` | KMS key for encrypting the control plane CloudWatch Logs group. | `string` | `null` | no |
 | `cluster_access_entries` | Additional IAM principals to grant cluster access. | `map(object)` | `{}` | no |
 | `cluster_addons` | EKS addons to manage. | `map(object)` | `vpc-cni`, `coredns`, `kube-proxy` | no |
 | `enable_cluster_autoscaler_tags` | Tag node group ASGs for Cluster Autoscaler discovery. | `bool` | `true` | no |

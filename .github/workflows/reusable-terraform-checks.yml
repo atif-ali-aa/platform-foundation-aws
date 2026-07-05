@@ -70,7 +70,7 @@ jobs:
 
       - name: Init tflint plugins
         working-directory: ${{ inputs.working-directory }}
-        run: tflint --init
+        run: tflint --config="${{ github.workspace }}/.tflint.hcl" --init
         env:
           GITHUB_TOKEN: ${{ github.token }}
 

@@ -58,9 +58,9 @@ variable "cluster_enabled_log_types" {
 }
 
 variable "cluster_log_retention_in_days" {
-  description = "CloudWatch Logs retention for the control plane log group. Must be one of the retention periods CloudWatch Logs actually supports."
+  description = "CloudWatch Logs retention for the control plane log group. Must be one of the retention periods CloudWatch Logs actually supports. Defaults to 365 (a common compliance baseline); dev/sandbox environments can explicitly opt into a shorter retention to save on storage cost."
   type        = number
-  default     = 90
+  default     = 365
 
   validation {
     condition = contains(
@@ -73,6 +73,12 @@ variable "cluster_log_retention_in_days" {
 
 variable "cluster_encryption_config_kms_key_arn" {
   description = "KMS key ARN for envelope encryption of Kubernetes Secrets. No default. The kms module is currently Planned (see modules/kms), so callers must supply their own key ARN until it ships. Leave null to skip envelope encryption (secrets are still encrypted at rest by EBS/etcd defaults, just not with a customer-managed key)."
+  type        = string
+  default     = null
+}
+
+variable "cluster_log_kms_key_arn" {
+  description = "KMS key ARN for encrypting the control plane CloudWatch Logs group. No default. The kms module is currently Planned (see modules/kms), so callers must supply their own key ARN until it ships. Leave null to use CloudWatch Logs' default encryption."
   type        = string
   default     = null
 }

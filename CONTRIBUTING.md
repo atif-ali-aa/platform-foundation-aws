@@ -33,7 +33,7 @@ documentation updates before merge.
 Conventional Commits are used so `CHANGELOG.md` can eventually be generated
 from history:
 
-```
+```text
 feat(vpc): add configurable NAT gateway strategy
 fix(eks): correct IRSA trust policy condition
 docs(adr): add ADR-006 for state locking
