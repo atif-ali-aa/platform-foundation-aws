@@ -73,6 +73,17 @@ intent is described in [docs/repository-standards.md](docs/repository-standards.
 - `.github/PULL_REQUEST_TEMPLATE.md` and `CONTRIBUTING.md`: fixed a
   trailing-whitespace and a missing-code-fence-language markdownlint
   finding surfaced by the `Markdown Lint` workflow.
+- CI: `aquasecurity/tfsec-action` in `reusable-terraform-checks.yml` made
+  unauthenticated GitHub API calls to resolve its "latest" version and
+  intermittently hit GitHub's shared rate limit for unauthenticated
+  requests, failing `tfsec` on unrelated PRs (surfaced on two Dependabot
+  PRs, unrelated to what either PR actually changed). Fixed by passing
+  `github_token` to the action.
+- CI: `terraform-plan.yml` and `markdownlint.yml` didn't trigger on
+  changes to their own workflow file, so a Dependabot bump of an action
+  version they use (`aws-actions/configure-aws-credentials`,
+  `DavidAnson/markdownlint-cli2-action`) went completely unvalidated.
+  Both workflows now trigger on changes to themselves.
 
 <!--
 Entries below this line are added as milestones complete. Each entry

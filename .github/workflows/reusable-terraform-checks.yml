@@ -89,6 +89,7 @@ jobs:
         with:
           working_directory: ${{ inputs.working-directory }}
           soft_fail: false
+          github_token: ${{ github.token }}
 
   checkov:
     name: checkov

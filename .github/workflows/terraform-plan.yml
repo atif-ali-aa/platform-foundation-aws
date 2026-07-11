@@ -20,6 +20,7 @@ on:
   pull_request:
     paths:
       - "environments/**"
+      - ".github/workflows/terraform-plan.yml"
 
 permissions:
   contents: read
