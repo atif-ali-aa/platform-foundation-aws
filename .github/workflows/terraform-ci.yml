@@ -37,7 +37,7 @@ jobs:
       dirs: ${{ steps.find.outputs.dirs }}
       has-dirs: ${{ steps.find.outputs.has-dirs }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Find directories containing .tf files
         id: find

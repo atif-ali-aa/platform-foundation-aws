@@ -34,7 +34,7 @@ jobs:
       dirs: ${{ steps.find.outputs.dirs }}
       has-dirs: ${{ steps.find.outputs.has-dirs }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Find environment directories
         id: find
@@ -59,7 +59,7 @@ jobs:
       matrix:
         directory: ${{ fromJson(needs.discover.outputs.dirs) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: hashicorp/setup-terraform@v3
         with:
